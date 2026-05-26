@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>War of Territorials - Territory Strategy Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #1a1a1a;
+            color: #ddd;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            display: flex;
+            height: 100vh;
+        }
+
+        #mapCanvas {
+            flex: 1;
+            background: #2a3f5f;
+            cursor: pointer;
+            border-right: 2px solid #444;
+        }
+
+        #sidebar {
+            width: 300px;
+            background: #1a1a1a;
+            border-left: 2px solid #444;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 15px;
+            border-bottom: 1px solid #333;
+        }
+
+        .sidebar-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #0f0;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .faction-info {
+            background: #2a2a2a;
+            padding: 10px;
+            margin: 8px 0;
+            border-left: 4px solid #0f0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .faction-info:hover {
+            background: #333;
+            transform: translateX(2px);
+        }
+
+        .faction-info.player {
+            border-left-color: #0f0;
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        .faction-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .faction-stats {
+            font-size: 12px;
+            color: #aaa;
+            line-height: 1.4;
+        }
+
+        button {
+            background: #0f0;
+            border: none;
+            color: #000;
+            padding: 10px 15px;
+            margin: 5px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #0a0;
+            transform: scale(1.02);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 5px;
+            margin: 5px 0;
+        }
+
+        .button-group button {
+            flex: 1;
+            margin: 0;
+            padding: 8px;
+            font-size: 12px;
+        }
+
+        .controls {
+            background: #2a2a2a;
+            padding: 15px;
+            border-top: 1px solid #333;
+            margin-top: auto;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .speed-display {
+            font-size: 12px;
+            margin-top: 5px;
+            text-align: center;
+        }
+
+        .info-box {
+            background: #2a2a2a;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 11px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 2px;
+        }
+
+        #gameStatus {
+            text-align: center;
+            padding: 10px;
+            background: #333;
+            font-weight: bold;
+            color: #0f0;
+        }
+
+        .time-display {
+            text-align: center;
+            font-size: 14px;
+            padding: 10px;
+            color: #0f0;
+        }
+
+        .alert {
+            background: #4a4a2a;
+            border-left: 3px solid #ff0;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 2px;
+            font-size: 12px;
+        }
+
+        .alert.war {
+            background: #4a2a2a;
+            border-left-color: #f00;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1a1a;
+            border: 2px solid #0f0;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .modal-content h2 {
+            color: #0f0;
+            margin-bottom: 15px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            margin: 0;
+        }
+
+        .close-btn {
+            background: #f00 !important;
+            color: white !important;
+            padding: 5px 10px !important;
+            font-size: 12px !important;
+            width: auto !important;
+            float: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="mapCanvas"></canvas>
+        <div id="sidebar">
+            <div id="gameStatus">WAR OF TERRITORIALS</div>
+            
+            <div class="sidebar-section">
+                <div class="time-display" id="timeDisplay">Year: 1000</div>
+                <div style="text-align: center; font-size: 12px; color: #aaa;">Speed: <span id="speedValue">1x</span></div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Your Nation</div>
+                <div id="playerInfo" class="info-box">Select a faction to play</div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Nations</div>
+                <div id="factionsList"></div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Actions</div>
+                <button id="declareWarBtn" disabled>Declare War</button>
+                <button id="allianceBtn" disabled>Form Alliance</button>
+                <button id="peaceBtn" disabled>Make Peace</button>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Events</div>
+                <div id="eventsList" style="max-height: 150px; overflow-y: auto;"></div>
+            </div>
+
+            <div class="controls">
+                <label>Game Speed:</label>
+                <input type="range" id="speedSlider" min="0.5" max="3" step="0.5" value="1">
+                <div class="speed-display" id="speedDisplay">Normal</div>
+                <button id="pauseBtn" style="margin-top: 15px;">⏸ Pause</button>
+                <button id="resetBtn" style="background: #f00;">↻ New Game</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gameOverModal" class="modal">
+        <div class="modal-content">
+            <h2 id="gameOverTitle">Game Over</h2>
+            <p id="gameOverMessage"></p>
+            <div class="modal-buttons">
+                <button onclick="location.reload()">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="diplomacyModal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeDiplomacyModal()">✕</button>
+            <h2 id="diplomacyTitle">Diplomacy</h2>
+            <p id="diplomacyMessage"></p>
+            <div class="modal-buttons">
+                <button id="diplomacyAcceptBtn" onclick="acceptDiplomacy()">Accept</button>
+                <button id="diplomacyDenyBtn" onclick="denyDiplomacy()">Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
