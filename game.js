@@ -1,5 +1,6 @@
 // War of Territorials - Basit Oyun Motoru
 // 1. Haritanın oluşturulması ve başlangıç bölgeleri
+// 2. Uluslar tur bazlı yayılabiliyor!
 
 const canvas = document.getElementById('mapCanvas');
 const ctx = canvas.getContext('2d');
@@ -17,11 +18,11 @@ const colors = [
 ];
 const factionCount = colors.length;
 
-// Haritada her hücre için: hangi ülke?
 let mapGrid = [];
+let turn = 0;
+let expanding = true; // Yayılma devam ediyor mu?
 
 function randomInitMap() {
-    // Her faction için random başlangıç noktası
     let seeds = [];
     mapGrid = [];
     for (let r = 0; r < mapRows; r++) {
@@ -35,23 +36,6 @@ function randomInitMap() {
         let col = Math.floor(Math.random() * mapCols);
         seeds.push({ row, col, id: i });
         mapGrid[row][col] = i;
-    }
-    // Basit rastgele bölge yayılmaları
-    let iterations = mapCols * mapRows;
-    for (let i = 0; i < iterations; i++) {
-        let r = Math.floor(Math.random() * mapRows);
-        let c = Math.floor(Math.random() * mapCols);
-        // Çevresinden (komşudan) ülke bulaşsın
-        let factionNeighbors = [];
-        [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc]) => {
-            let nr = r + dr, nc = c + dc;
-            if (nr >= 0 && nr < mapRows && nc >= 0 && nc < mapCols && mapGrid[nr][nc] !== -1)
-                factionNeighbors.push(mapGrid[nr][nc]);
-        });
-        if (factionNeighbors.length > 0) {
-            let chosen = factionNeighbors[Math.floor(Math.random() * factionNeighbors.length)];
-            mapGrid[r][c] = chosen;
-        }
     }
 }
 
@@ -67,9 +51,51 @@ function drawMap() {
     }
 }
 
+function expandTerritories() {
+    // Yayılma algoritması: boş komşuları mevcut ülkelere ata
+    let changed = false;
+    let newMap = JSON.parse(JSON.stringify(mapGrid));
+    for (let r = 0; r < mapRows; r++) {
+        for (let c = 0; c < mapCols; c++) {
+            if (mapGrid[r][c] === -1) { // boşsa
+                // Çevrede ülke varsa oradan "yayılma"
+                let factionNeighbors = [];
+                [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc]) => {
+                    let nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < mapRows && nc >= 0 && nc < mapCols && mapGrid[nr][nc] !== -1)
+                        factionNeighbors.push(mapGrid[nr][nc]);
+                });
+                if (factionNeighbors.length > 0) {
+                    let chosen = factionNeighbors[Math.floor(Math.random() * factionNeighbors.length)];
+                    newMap[r][c] = chosen;
+                    changed = true;
+                }
+            }
+        }
+    }
+    mapGrid = newMap;
+    return changed;
+}
+
+function gameLoopStep() {
+    if (!expanding) return;
+    turn++;
+    const spread = expandTerritories();
+    drawMap();
+    if (!spread) expanding = false; // Bitince dur
+}
+
 function startGame() {
     randomInitMap();
+    turn = 0;
+    expanding = true;
     drawMap();
+    // Loop başlat
+    clearInterval(window._expandIntv);
+    window._expandIntv = setInterval(gameLoopStep, 180);
 }
 
 window.onload = startGame;
+// Yeni oyun için reset dinleyicisini de ekleyebilirsin
+const resetBtn = document.getElementById('resetBtn');
+if (resetBtn) resetBtn.onclick = startGame;
