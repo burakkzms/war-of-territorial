@@ -13,16 +13,18 @@ canvas.height = mapRows * cellSize;
 const colors = [
     '#317bbb', '#e64759', '#77c949', '#fdbf27', '#7e5bef', '#43c0c1', '#f59342', '#ffc30a', '#c14f89', '#87cfeb',
 ];
+const factionNames = ['Azure Kingdom', 'Crimson Empire', 'Green Dynasty', 'Golden Realm', 'Violet Dominion', 'Cyan Federation', 'Orange Alliance', 'Yellow Confederation', 'Magenta Coalition', 'Sky Territories'];
 const factionCount = colors.length;
 
 let mapGrid = [];
-let mapMask = []; // Oynanabilir bölgeler (-1 = boş, 0+ = ülke)
+let mapMask = [];
 let turn = 0;
 let expanding = true;
 let currentMap = 'world';
+let playerFaction = -1; // Oyuncunun kontrol ettiği ülke (-1 = seçilmedi)
+let gameActive = true;
 
 // ==================== HARITA MASKELERİ ====================
-// Harita maskeleri: -1 = boş (oyun alanı değil), 0+ = oynanabilir bölge
 
 const mapMasks = {
     world: createWorldMask(),
@@ -36,128 +38,98 @@ const mapMasks = {
 };
 
 function createWorldMask() {
-    // Basit dünya haritası: tüm alanı oynanabilir yap
     let mask = [];
     for (let r = 0; r < mapRows; r++) {
         mask[r] = [];
         for (let c = 0; c < mapCols; c++) {
-            mask[r][c] = 0; // Tüm alanı oynanabilir
+            mask[r][c] = 0;
         }
     }
     return mask;
 }
 
 function createEuropeMask() {
-    // Avrupa haritası (sadeleştirilmiş gerçekçi sınırlar)
-    // 0-49 col, 0-29 row içinde Avrupa şeklini temsil ediyor
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Batı Avrupa (İspanya, Fransa, İngiltere, Almanya)
     for (let r = 8; r < 20; r++) {
         for (let c = 5; c < 20; c++) {
             mask[r][c] = 0;
         }
     }
-    
-    // Güney Avrupa (İtalya, Yunanistan)
     for (let r = 15; r < 25; r++) {
         for (let c = 18; c < 28; c++) {
             mask[r][c] = 0;
         }
     }
-    
-    // Doğu Avrupa (Polonya, Rusya)
     for (let r = 5; r < 22; r++) {
         for (let c = 25; c < 40; c++) {
             mask[r][c] = 0;
         }
     }
-    
-    // Kuzey Avrupa (İskandinav)
     for (let r = 2; r < 10; r++) {
         for (let c = 18; c < 35; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
 function createNorthAmericaMask() {
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Kuzey Amerika şekli (USA, Canada, Mexico)
     for (let r = 3; r < 25; r++) {
         for (let c = 5; c < 25; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
 function createSouthAmericaMask() {
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Güney Amerika şekli
     for (let r = 10; r < 28; r++) {
         for (let c = 12; c < 22; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
 function createMiddleEastMask() {
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Orta Doğu (Türkiye, İran, Irak, Suudi Arabistan)
     for (let r = 8; r < 25; r++) {
         for (let c = 20; c < 40; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
 function createAsiaMask() {
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Asya (Çin, Hindistan, Japonya, vs.)
     for (let r = 5; r < 26; r++) {
         for (let c = 25; c < 50; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
 function createAfricaMask() {
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Afrika
     for (let r = 12; r < 28; r++) {
         for (let c = 15; c < 35; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
 function createAnatoliaMask() {
     let mask = Array(mapRows).fill(null).map(() => Array(mapCols).fill(-1));
-    
-    // Anadolu/Türkiye detaylı
     for (let r = 12; r < 22; r++) {
         for (let c = 22; c < 32; c++) {
             mask[r][c] = 0;
         }
     }
-    
     return mask;
 }
 
@@ -170,14 +142,13 @@ function randomInitMap() {
         mapGrid[r] = [];
         for (let c = 0; c < mapCols; c++) {
             if (mapMask[r][c] === -1) {
-                mapGrid[r][c] = -1; // Oyun alanı dışı
+                mapGrid[r][c] = -1;
             } else {
-                mapGrid[r][c] = -1; // Başlangıçta boş oynanabilir alanlar
+                mapGrid[r][c] = -1;
             }
         }
     }
     
-    // Rastgele başlangıç noktaları
     let attempts = 0;
     for (let i = 0; i < factionCount && attempts < 1000; i++) {
         let row = Math.floor(Math.random() * mapRows);
@@ -197,13 +168,14 @@ function drawMap() {
             let f = mapGrid[r][c];
             
             if (mapMask[r][c] === -1) {
-                // Oyun alanı dışı - mat siyah
                 ctx.fillStyle = '#111';
             } else if (f >= 0) {
-                // Ülke alanı - renk
                 ctx.fillStyle = colors[f];
+                // Oyuncu ülkesini daha parlak göster
+                if (f === playerFaction) {
+                    ctx.fillStyle = colors[f];
+                }
             } else {
-                // Boş oynanabilir alan - koyu arka plan
                 ctx.fillStyle = '#2a2a2a';
             }
             
@@ -238,7 +210,7 @@ function expandAndFight() {
                 [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc]) => {
                     let nr = r+dr, nc = c+dc;
                     if (nr<0 || nr>=mapRows || nc<0 || nc>=mapCols) return;
-                    if (mapMask[nr][nc] === -1) return; // Oyun alanı dışı
+                    if (mapMask[nr][nc] === -1) return;
                     
                     const neighbor = mapGrid[nr][nc];
                     
@@ -262,7 +234,7 @@ function expandAndFight() {
 }
 
 function gameLoopStep() {
-    if (!expanding) return;
+    if (!expanding || !gameActive) return;
     turn++;
     const spread = expandAndFight();
     drawMap();
@@ -272,6 +244,40 @@ function gameLoopStep() {
 
 function updateUI() {
     document.getElementById('timeDisplay').textContent = `Year: ${1000 + turn * 10}`;
+    
+    // Oyuncu bilgisi güncelle
+    if (playerFaction >= 0) {
+        let sizes = getFactionSizes();
+        document.getElementById('playerInfo').innerHTML = `
+            <div style="text-align: left;">
+                <strong style="color: ${colors[playerFaction]};">● ${factionNames[playerFaction]}</strong><br>
+                <span style="font-size: 11px; color: #aaa;">Territory: ${sizes[playerFaction]} cells</span>
+            </div>
+        `;
+    }
+    
+    // Tüm ülkeleri listele
+    let sizes = getFactionSizes();
+    let factionsList = '<div class="legend">';
+    for (let i = 0; i < factionCount; i++) {
+        if (sizes[i] > 0) {
+            let isPlayer = i === playerFaction;
+            factionsList += `
+                <div class="legend-item" onclick="selectFaction(${i})" style="cursor: pointer; padding: 5px; background: ${isPlayer ? 'rgba(255,255,0,0.2)' : 'transparent'}; border-radius: 3px;">
+                    <div class="legend-color" style="background: ${colors[i]};"></div>
+                    <span style="font-size: 11px;">${factionNames[i]}: ${sizes[i]}</span>
+                </div>
+            `;
+        }
+    }
+    factionsList += '</div>';
+    document.getElementById('factionsList').innerHTML = factionsList;
+}
+
+function selectFaction(factionId) {
+    playerFaction = factionId;
+    updateUI();
+    console.log(`You selected ${factionNames[factionId]}`);
 }
 
 function startGame() {
@@ -280,6 +286,8 @@ function startGame() {
     randomInitMap();
     turn = 0;
     expanding = true;
+    gameActive = true;
+    playerFaction = -1;
     drawMap();
     updateUI();
     
@@ -288,6 +296,23 @@ function startGame() {
 }
 
 // ==================== ARAYÜZ ETKİLEŞİMLERİ ====================
+
+// Harita tıklama - ülke seçme
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    
+    if (row >= 0 && row < mapRows && col >= 0 && col < mapCols) {
+        const factionAtClick = mapGrid[row][col];
+        if (factionAtClick >= 0) {
+            selectFaction(factionAtClick);
+        }
+    }
+});
 
 document.getElementById('mapSelect').addEventListener('change', startGame);
 document.getElementById('resetBtn').addEventListener('click', startGame);
