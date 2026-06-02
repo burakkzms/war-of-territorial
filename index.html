@@ -245,6 +245,17 @@
             width: auto !important;
             float: right;
         }
+
+        #mapSelect {
+            width: 100%;
+            padding: 8px;
+            background: #2a2a2a;
+            color: #0f0;
+            border: 1px solid #0f0;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -252,6 +263,20 @@
         <canvas id="mapCanvas"></canvas>
         <div id="sidebar">
             <div id="gameStatus">WAR OF TERRITORIALS</div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Map Select</div>
+                <select id="mapSelect">
+                    <option value="world">🌍 World Map</option>
+                    <option value="europe">🇪🇺 Europe</option>
+                    <option value="north_america">🌎 North America</option>
+                    <option value="south_america">🌎 South America</option>
+                    <option value="middle_east">🕌 Middle East</option>
+                    <option value="asia">🏯 Asia</option>
+                    <option value="africa">🦁 Africa</option>
+                    <option value="anatolia">🏛️ Anatolia</option>
+                </select>
+            </div>
             
             <div class="sidebar-section">
                 <div class="time-display" id="timeDisplay">Year: 1000</div>
@@ -285,7 +310,7 @@
                 <input type="range" id="speedSlider" min="0.5" max="3" step="0.5" value="1">
                 <div class="speed-display" id="speedDisplay">Normal</div>
                 <button id="pauseBtn" style="margin-top: 15px;">⏸ Pause</button>
-                <button id="resetBtn" style="background: #f00;">↻ New Game</button>
+                <button id="resetBtn" style="background: #f00;">⤴ New Game</button>
             </div>
         </div>
     </div>
