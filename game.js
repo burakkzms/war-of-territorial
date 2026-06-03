@@ -1,5 +1,4 @@
 // War of Territorials - Akıllı Yayılma, Savaş ve Çok Haritası Oyun Motoru
-// Her haritanın gerçekçi sınırları var ve seçmeli olarak oynanabilir
 
 const canvas = document.getElementById('mapCanvas');
 const ctx = canvas.getContext('2d');
@@ -10,9 +9,7 @@ let cellSize = 18;
 canvas.width = mapCols * cellSize;
 canvas.height = mapRows * cellSize;
 
-const colors = [
-    '#317bbb', '#e64759', '#77c949', '#fdbf27', '#7e5bef', '#43c0c1', '#f59342', '#ffc30a', '#c14f89', '#87cfeb',
-];
+const colors = ['#317bbb', '#e64759', '#77c949', '#fdbf27', '#7e5bef', '#43c0c1', '#f59342', '#ffc30a', '#c14f89', '#87cfeb'];
 const factionNames = ['Azure Kingdom', 'Crimson Empire', 'Green Dynasty', 'Golden Realm', 'Violet Dominion', 'Cyan Federation', 'Orange Alliance', 'Yellow Confederation', 'Magenta Coalition', 'Sky Territories'];
 const factionCount = colors.length;
 
@@ -21,10 +18,59 @@ let mapMask = [];
 let turn = 0;
 let expanding = true;
 let currentMap = 'world';
-let playerFaction = -1; // Oyuncunun kontrol ettiği ülke (-1 = seçilmedi)
+let playerFaction = -1;
 let gameActive = true;
+let alliances = {};
+let wars = {};
+let eventLog = [];
 
-// ==================== HARITA MASKELERİ ====================
+function getRelationship(f1, f2) {
+    if (f1 === f2) return 'self';
+    const key = `${Math.min(f1, f2)},${Math.max(f1, f2)}`;
+    if (wars[key]) return 'war';
+    if (alliances[key]) return 'alliance';
+    return 'neutral';
+}
+
+function declareWar(attacker, target) {
+    const key = `${Math.min(attacker, target)},${Math.max(attacker, target)}`;
+    if (getRelationship(attacker, target) === 'alliance') {
+        delete alliances[key];
+    }
+    wars[key] = true;
+    addEvent(`${factionNames[attacker]} declared war on ${factionNames[target]}!`, 'war');
+}
+
+function formAlliance(f1, f2) {
+    const key = `${Math.min(f1, f2)},${Math.max(f1, f2)}`;
+    if (getRelationship(f1, f2) === 'war') {
+        delete wars[key];
+    }
+    alliances[key] = true;
+    addEvent(`${factionNames[f1]} and ${factionNames[f2]} formed an alliance!`);
+}
+
+function makePeace(f1, f2) {
+    const key = `${Math.min(f1, f2)},${Math.max(f1, f2)}`;
+    delete alliances[key];
+    delete wars[key];
+    addEvent(`${factionNames[f1]} and ${factionNames[f2]} made peace!`);
+}
+
+function addEvent(message, type = 'info') {
+    eventLog.unshift({ message, turn, type });
+    if (eventLog.length > 20) eventLog.pop();
+    updateEventsList();
+}
+
+function updateEventsList() {
+    let html = '';
+    eventLog.forEach(e => {
+        let color = e.type === 'war' ? '#f00' : '#0f0';
+        html += `<div class="alert" style="border-left-color: ${color}; font-size: 10px; padding: 5px;">${e.message}</div>`;
+    });
+    document.getElementById('eventsList').innerHTML = html;
+}
 
 const mapMasks = {
     world: createWorldMask(),
@@ -133,19 +179,12 @@ function createAnatoliaMask() {
     return mask;
 }
 
-// ==================== OYUN LOJİĞİ ====================
-
 function randomInitMap() {
-    let seeds = [];
     mapGrid = [];
     for (let r = 0; r < mapRows; r++) {
         mapGrid[r] = [];
         for (let c = 0; c < mapCols; c++) {
-            if (mapMask[r][c] === -1) {
-                mapGrid[r][c] = -1;
-            } else {
-                mapGrid[r][c] = -1;
-            }
+            mapGrid[r][c] = mapMask[r][c] === -1 ? -1 : -1;
         }
     }
     
@@ -156,7 +195,6 @@ function randomInitMap() {
         
         if (mapGrid[row][col] === -1 && mapMask[row][col] !== -1) {
             mapGrid[row][col] = i;
-            seeds.push({ row, col, id: i });
         }
         attempts++;
     }
@@ -171,10 +209,6 @@ function drawMap() {
                 ctx.fillStyle = '#111';
             } else if (f >= 0) {
                 ctx.fillStyle = colors[f];
-                // Oyuncu ülkesini daha parlak göster
-                if (f === playerFaction) {
-                    ctx.fillStyle = colors[f];
-                }
             } else {
                 ctx.fillStyle = '#2a2a2a';
             }
@@ -218,11 +252,22 @@ function expandAndFight() {
                         newMap[nr][nc] = f;
                         changed = true;
                     } else if (neighbor >= 0 && neighbor !== f && newMap[nr][nc] !== f) {
+                        if (getRelationship(f, neighbor) === 'alliance') return;
+                        
                         let myPower = sizes[f] + Math.floor(Math.random()*5);
                         let enemyPower = sizes[neighbor] + Math.floor(Math.random()*5);
-                        if (myPower > enemyPower) {
-                            newMap[nr][nc] = f;
-                            changed = true;
+                        
+                        if (getRelationship(f, neighbor) === 'neutral') {
+                            if (Math.random() < 0.3) {
+                                declareWar(f, neighbor);
+                            }
+                        }
+                        
+                        if (getRelationship(f, neighbor) === 'war') {
+                            if (myPower > enemyPower) {
+                                newMap[nr][nc] = f;
+                                changed = true;
+                            }
                         }
                     }
                 });
@@ -233,57 +278,84 @@ function expandAndFight() {
     return changed;
 }
 
+function checkGameOver() {
+    let sizes = getFactionSizes();
+    let activeFactions = 0;
+    let winner = -1;
+    
+    for (let i = 0; i < factionCount; i++) {
+        if (sizes[i] > 0) {
+            activeFactions++;
+            winner = i;
+        }
+    }
+    
+    if (activeFactions === 1) {
+        gameActive = false;
+        expanding = false;
+        let message = winner === playerFaction ? `🎉 You won! ${factionNames[playerFaction]} conquered!` : `Game Over! ${factionNames[winner]} won!`;
+        showGameOver(message);
+    }
+}
+
+function showGameOver(message) {
+    const modal = document.getElementById('gameOverModal');
+    if (modal) {
+        document.getElementById('gameOverMessage').innerHTML = message;
+        modal.classList.add('active');
+    }
+}
+
 function gameLoopStep() {
     if (!expanding || !gameActive) return;
     turn++;
     const spread = expandAndFight();
     drawMap();
     updateUI();
+    checkGameOver();
     if (!spread) expanding = false;
 }
 
 function updateUI() {
     document.getElementById('timeDisplay').textContent = `Year: ${1000 + turn * 10}`;
     
-    // Oyuncu bilgisi güncelle
+    let sizes = getFactionSizes();
     if (playerFaction >= 0) {
-        let sizes = getFactionSizes();
-        document.getElementById('playerInfo').innerHTML = `
-            <div style="text-align: left;">
-                <strong style="color: ${colors[playerFaction]};">● ${factionNames[playerFaction]}</strong><br>
-                <span style="font-size: 11px; color: #aaa;">Territory: ${sizes[playerFaction]} cells</span>
-            </div>
-        `;
+        document.getElementById('playerInfo').innerHTML = `<strong style="color: ${colors[playerFaction]};">● ${factionNames[playerFaction]}</strong><br><span style="font-size: 11px;">Territory: ${sizes[playerFaction]} cells</span>`;
+        document.getElementById('declareWarBtn').disabled = false;
+        document.getElementById('allianceBtn').disabled = false;
+        document.getElementById('peaceBtn').disabled = false;
+    } else {
+        document.getElementById('playerInfo').innerHTML = 'Select a faction';
+        document.getElementById('declareWarBtn').disabled = true;
+        document.getElementById('allianceBtn').disabled = true;
+        document.getElementById('peaceBtn').disabled = true;
     }
     
-    // Tüm ülkeleri listele
-    let sizes = getFactionSizes();
-    let factionsList = '<div class="legend">';
+    let html = '';
     for (let i = 0; i < factionCount; i++) {
         if (sizes[i] > 0) {
             let isPlayer = i === playerFaction;
-            factionsList += `
-                <div class="legend-item" onclick="selectFaction(${i})" style="cursor: pointer; padding: 5px; background: ${isPlayer ? 'rgba(255,255,0,0.2)' : 'transparent'}; border-radius: 3px;">
-                    <div class="legend-color" style="background: ${colors[i]};"></div>
-                    <span style="font-size: 11px;">${factionNames[i]}: ${sizes[i]}</span>
-                </div>
-            `;
+            let rel = playerFaction >= 0 && playerFaction !== i ? getRelationship(playerFaction, i) : '';
+            let icon = rel === 'alliance' ? '🤝' : rel === 'war' ? '⚔️' : '';
+            html += `<div class="faction-info" onclick="window.selectFaction(${i})" style="cursor: pointer; background: ${isPlayer ? 'rgba(255,255,0,0.2)' : 'transparent'};"><div class="faction-name" style="color: ${colors[i]};">● ${factionNames[i]} ${icon}</div><div class="faction-stats">${sizes[i]} cells</div></div>`;
         }
     }
-    factionsList += '</div>';
-    document.getElementById('factionsList').innerHTML = factionsList;
+    document.getElementById('factionsList').innerHTML = html;
 }
 
-function selectFaction(factionId) {
-    playerFaction = factionId;
+window.selectFaction = function(id) {
+    playerFaction = id;
     updateUI();
-    console.log(`You selected ${factionNames[factionId]}`);
-}
+};
 
 function startGame() {
     currentMap = document.getElementById('mapSelect').value;
     mapMask = mapMasks[currentMap];
     randomInitMap();
+    alliances = {};
+    wars = {};
+    eventLog = [];
     turn = 0;
     expanding = true;
     gameActive = true;
@@ -295,36 +367,60 @@ function startGame() {
     window._expandIntv = setInterval(gameLoopStep, 180);
 }
 
-// ==================== ARAYÜZ ETKİLEŞİMLERİ ====================
+document.getElementById('mapSelect').addEventListener('change', startGame);
+document.getElementById('resetBtn').addEventListener('click', startGame);
 
-// Harita tıklama - ülke seçme
-canvas.addEventListener('click', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    const col = Math.floor(x / cellSize);
-    const row = Math.floor(y / cellSize);
-    
-    if (row >= 0 && row < mapRows && col >= 0 && col < mapCols) {
-        const factionAtClick = mapGrid[row][col];
-        if (factionAtClick >= 0) {
-            selectFaction(factionAtClick);
+document.getElementById('declareWarBtn').addEventListener('click', () => {
+    if (playerFaction < 0) return;
+    let sizes = getFactionSizes();
+    let enemies = [];
+    for (let i = 0; i < factionCount; i++) {
+        if (i !== playerFaction && sizes[i] > 0 && getRelationship(playerFaction, i) !== 'alliance') {
+            enemies.push(i);
         }
+    }
+    if (enemies.length > 0) {
+        let enemy = enemies[Math.floor(Math.random() * enemies.length)];
+        declareWar(playerFaction, enemy);
     }
 });
 
-document.getElementById('mapSelect').addEventListener('change', startGame);
-document.getElementById('resetBtn').addEventListener('click', startGame);
+document.getElementById('allianceBtn').addEventListener('click', () => {
+    if (playerFaction < 0) return;
+    let sizes = getFactionSizes();
+    let candidates = [];
+    for (let i = 0; i < factionCount; i++) {
+        if (i !== playerFaction && sizes[i] > 0 && getRelationship(playerFaction, i) === 'neutral') {
+            candidates.push(i);
+        }
+    }
+    if (candidates.length > 0) {
+        let ally = candidates[Math.floor(Math.random() * candidates.length)];
+        formAlliance(playerFaction, ally);
+    }
+});
+
+document.getElementById('peaceBtn').addEventListener('click', () => {
+    if (playerFaction < 0) return;
+    let sizes = getFactionSizes();
+    let enemies = [];
+    for (let i = 0; i < factionCount; i++) {
+        if (i !== playerFaction && sizes[i] > 0 && getRelationship(playerFaction, i) === 'war') {
+            enemies.push(i);
+        }
+    }
+    if (enemies.length > 0) {
+        let enemy = enemies[Math.floor(Math.random() * enemies.length)];
+        makePeace(playerFaction, enemy);
+    }
+});
 
 document.getElementById('speedSlider').addEventListener('input', (e) => {
     let speed = parseFloat(e.target.value);
     let speedName = speed === 0.5 ? 'Slow' : speed === 1 ? 'Normal' : speed === 1.5 ? 'Fast' : 'Very Fast';
     document.getElementById('speedDisplay').textContent = speedName;
-    
-    let interval = 180 / speed;
     clearInterval(window._expandIntv);
-    window._expandIntv = setInterval(gameLoopStep, interval);
+    window._expandIntv = setInterval(gameLoopStep, 180 / speed);
 });
 
 document.getElementById('pauseBtn').addEventListener('click', () => {
@@ -332,4 +428,17 @@ document.getElementById('pauseBtn').addEventListener('click', () => {
     document.getElementById('pauseBtn').textContent = expanding ? '⏸ Pause' : '▶ Resume';
 });
 
-window.onload = startGame;
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const col = Math.floor((e.clientX - rect.left) / cellSize);
+    const row = Math.floor((e.clientY - rect.top) / cellSize);
+    if (row >= 0 && row < mapRows && col >= 0 && col < mapCols && mapGrid[row][col] >= 0) {
+        window.selectFaction(mapGrid[row][col]);
+    }
+});
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startGame);
+} else {
+    startGame();
+}
